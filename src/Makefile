@@ -18,44 +18,37 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+#
 
+# This is a sample Makefile for cross-compiling the LiME LKM
 
 obj-m := lime.o
-lime-objs := tcp.o disk.o main.o hash.o deflate.o
+lime-objs := tcp.o disk.o main.o
 
-KVER ?= $(shell uname -r)
+KDIR_GOLD := ~/lineage
 
-KDIR ?= /lib/modules/$(KVER)/build
+KVER := $(shell uname -r)
 
 PWD := $(shell pwd)
-
-.PHONY: modules modules_install clean distclean debug
+CCPATH := ~/Android/Sdk/ndk/toolchains/llvm/prebuilt/linux-x86_64/bin
 
 default:
-	$(MAKE) -C $(KDIR) M="$(PWD)" modules
+	# cross-compile for Android emulator
+	$(MAKE) ARCH=x86_64 CROSS_COMPILE=$(CCPATH)/x86_64-linux-android31-clang -C $(KDIR_GOLD) M="$(PWD)" modules
+	$(CCPATH)/llvm-strip --strip-unneeded lime.ko
+	mv lime.ko limeavd.ko
+
+	# compile for local system
+	$(MAKE) -C /lib/modules/$(KVER)/build M="$(PWD)" modules
 	strip --strip-unneeded lime.ko
 	mv lime.ko lime-$(KVER).ko
 
-debug:
-	KCFLAGS="-DLIME_DEBUG" $(MAKE) CONFIG_DEBUG_SG=y -C $(KDIR) M="$(PWD)" modules
-	strip --strip-unneeded lime.ko
-	mv lime.ko lime-$(KVER).ko
+	$(MAKE) tidy
 
-symbols:
-	$(MAKE) -C $(KDIR) M="$(PWD)" modules
-	mv lime.ko lime-$(KVER).ko
-
-modules:    main.c disk.c tcp.c hash.c lime.h
-	$(MAKE) -C /lib/modules/$(KVER)/build M="$(PWD)" $@
-	strip --strip-unneeded lime.ko
-
-modules_install:    modules
-	$(MAKE) -C $(KDIR) M="$(PWD)" $@
-
-clean:
+tidy:
 	rm -f *.o *.mod.c Module.symvers Module.markers modules.order \.*.o.cmd \.*.ko.cmd \.*.o.d
 	rm -rf \.tmp_versions
 
-distclean: mrproper
-mrproper:    clean
+clean:
+	$(MAKE) tidy
 	rm -f *.ko
