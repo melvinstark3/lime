@@ -1,4 +1,4 @@
-/*
+/*WW
  * LiME - Linux Memory Extractor
  * Copyright (c) 2011-2014 Joe Sylve - 504ENSICS Labs
  *
@@ -43,28 +43,17 @@ extern ssize_t write_vaddr_disk(void *, size_t);
 extern int setup_disk(char *, int);
 extern void cleanup_disk(void);
 
-extern int ldigest_init(void);
-extern int ldigest_update(void *, size_t);
-extern int ldigest_final(void);
-extern int ldigest_write_tcp(void);
-extern int ldigest_write_disk(void);
-extern int ldigest_clean(void);
-
-#ifdef LIME_SUPPORTS_DEFLATE
-extern int deflate_begin_stream(void *, size_t);
-extern int deflate_end_stream(void);
-extern ssize_t deflate(const void *, size_t);
-#endif
+//extern int ldigest_init(void);
+//extern int ldigest_update(void *, size_t);
+//extern int ldigest_final(void);
+//extern int ldigest_write_tcp(void);
+//extern int ldigest_write_disk(void);
 
 static char * format = 0;
 static int mode = 0;
 static int method = 0;
 
 static void * vpage;
-
-#ifdef LIME_SUPPORTS_DEFLATE
-static void *deflate_page_buf;
-#endif
 
 char * path = 0;
 int dio = 0;
@@ -89,11 +78,6 @@ long timeout = 1000;
 module_param(timeout, long, S_IRUGO);
 #endif
 
-#ifdef LIME_SUPPORTS_DEFLATE
-int compress = 0;
-module_param(compress, int, S_IRUGO);
-#endif
-
 int init_module (void)
 {
     if(!path) {
@@ -115,10 +99,6 @@ int init_module (void)
 
 #ifdef LIME_SUPPORTS_TIMING
     DBG("  TIMEOUT: %lu", timeout);
-#endif
-
-#ifdef LIME_SUPPORTS_DEFLATE
-    DBG("  COMPRESS: %u", compress);
 #endif
 
     if (!strcmp(format, "raw")) mode = LIME_MODE_RAW;
@@ -153,23 +133,11 @@ static int init() {
     }
 
     if (digest) {
-        compute_digest = ldigest_init();
         no_overlap = 1;
     }
 
     vpage = (void *) __get_free_page(GFP_NOIO);
 
-#ifdef LIME_SUPPORTS_DEFLATE
-    if (compress) {
-        deflate_page_buf = kmalloc(PAGE_SIZE, GFP_NOIO);
-        err = deflate_begin_stream(deflate_page_buf, PAGE_SIZE);
-        if (err < 0) {
-            DBG("ZLIB begin stream failed");
-            return err;
-        }
-        no_overlap = 1;
-    }
-#endif
 
     for (p = iomem_resource.child; p ; p = p->sibling) {
 
@@ -194,31 +162,6 @@ static int init() {
     DBG("Memory Dump Complete...");
 
     cleanup();
-
-    if (compute_digest == LIME_DIGEST_COMPUTE) {
-        DBG("Writing Out Digest.");
-
-        compute_digest = ldigest_final();
-
-        if (compute_digest == LIME_DIGEST_COMPLETE) {
-            if (method == LIME_METHOD_TCP)
-                err = ldigest_write_tcp();
-            else
-                err = ldigest_write_disk();
-
-            DBG("Digest Write %s.", (err == 0) ? "Complete" : "Failed");
-        }
-    }
-
-    if (digest)
-        ldigest_clean();
-
-#ifdef LIME_SUPPORTS_DEFLATE
-    if (compress) {
-        deflate_end_stream();
-        kfree(deflate_page_buf);
-    }
-#endif
 
     free_page((unsigned long) vpage);
 
@@ -338,31 +281,11 @@ static void write_range(struct resource * res) {
 static ssize_t write_vaddr(void * v, size_t is) {
     ssize_t ret;
 
-    if (compute_digest == LIME_DIGEST_COMPUTE)
-        compute_digest = ldigest_update(v, is);
-
-#ifdef LIME_SUPPORTS_DEFLATE
-    if (compress) {
-        /* Run deflate() on input until output buffer is not full. */
-        do {
-            ret = try_write(deflate_page_buf, deflate(v, is));
-            if (ret < 0)
-                return ret;
-        } while (ret == PAGE_SIZE);
-        return is;
-    }
-#endif
-
     ret = try_write(v, is);
     return ret;
 }
 
 static ssize_t write_flush(void) {
-#ifdef LIME_SUPPORTS_DEFLATE
-    if (compress) {
-        try_write(deflate_page_buf, deflate(NULL, 0));
-    }
-#endif
     return 0;
 }
 
@@ -399,3 +322,4 @@ void cleanup_module(void) {
 }
 
 MODULE_LICENSE("GPL");
+MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
