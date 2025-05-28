@@ -1,0 +1,40 @@
+Got a Dmesg error when running a custom kernel we get "[ 1277.548966] module lime: .gnu.linkonce.this_module section size must match the kernel's built struct module size at run time" and upon further investigation we found that This is a classic and very common error when trying to load an out-of-tree kernel module (like LiME) into a Linux kernel (especially modern ones). It indicates that the structure struct module, as compiled into your lime.ko module, has a different size or layout than the struct module defined in the kernel currently running on your Android AVD.
+
+Why does this happen?
+
+    Kernel API Changes: The struct module is a core kernel data structure that holds metadata about a loaded kernel module (its name, license, parameters, sections, dependencies, init/exit functions, etc.). Between different kernel versions, the Linux kernel developers often add, remove, or reorder fields within this struct module.
+    Compile-time Differences: Even if the major kernel version is the same, subtle compile-time configuration differences (e.g., specific CONFIG_ options being enabled or disabled) can sometimes affect the size or layout of this structure or other related structures.
+    Toolchain Differences: Less common for this specific error, but using a very different compiler/linker from the kernel's original build can sometimes lead to padding or alignment differences that alter struct sizes.
+
+What does .gnu.linkonce.this_module mean?
+
+This is a special section within the .ko (ELF) file. When a kernel module is compiled, a global struct module instance is created for that module. This instance is often placed in a section like .gnu.linkonce.this_module to ensure it's uniquely linked. The kernel's module loader reads this section to understand the module's metadata. If the size the kernel expects (from its own internal definition of struct module) doesn't match the size it reads from the .ko file's .gnu.linkonce.this_module section, it rejects the module.
+
+How to Fix It (The Ultimate Solution - Porting):
+
+This error is a strong indicator that your lime.ko source code is not fully compatible with the target Android 15 kernel (Linux 6.1.x, as you're likely using for Pixel 6 Pro).
+
+There are generally two approaches, but only one is robust for long-term use:
+
+    Proper Porting (Recommended and often Required):
+        This is the most reliable solution. You need to update the lime module's source code (specifically parts that interact with kernel internals like struct module, Red-Black trees, or other core APIs) to be compatible with the specific Linux kernel version your Android 15 AVD is running.
+        Steps:
+            Identify the exact kernel version: You're on Android 15, likely using a 6.1.x kernel for Pixel 6 Pro.
+            Examine lime's source code: Look for definitions of struct module if lime creates its own (unlikely, it typically uses the kernel's). More importantly, look at how lime uses kernel APIs that might rely on the struct module or other changing kernel structures.
+            Check Kernel API Changes: Review the Linux kernel changelogs, especially Documentation/ABI/ or Documentation/Changes/ or just git log on the kernel source for changes related to struct module or module loading between the kernel version lime was originally written for and the 6.1.x kernel.
+            Apply Patches/Manual Fixes: Often, projects like LiME have forks or patches available that aim to support newer kernel versions. Search for "LiME kernel 6.x patch" or similar. If not, you'll need to manually identify the changed fields or API usage and modify lime.c, elf.c, or other related source files in lime to match the current kernel's definition.
+
+    Weakening Compiler Checks (Temporary / Not Recommended for Production):
+        Some very old kernel builds or very specific circumstances might allow ignoring certain warnings or using -fno-strict-aliasing, but this is usually a band-aid that can hide deeper issues and lead to crashes. This will NOT fix a struct module size mismatch, as that's a fundamental runtime check.
+
+Why struct module size mismatch is so critical:
+
+The kernel's module loader needs to know the precise layout of the struct module to correctly parse the .ko file and register the module. If the sizes don't match, the kernel cannot correctly locate vital information (like the module's name, init function pointer, cleanup function pointer, etc.), which would lead to crashes or security vulnerabilities. Therefore, the kernel strictly enforces this size check.
+
+What you should do now:
+
+    Confirm Kernel Version: Double-check the exact kernel version your AVD is running (e.g., from /proc/version on the AVD).
+    Search for LiME Forks/Patches: Look on GitHub or other code repositories for versions or forks of LiME that explicitly claim support for Linux kernel 6.x or Android 15. This is often the easiest path.
+    Analyze Source Code Differences: If no suitable patch exists, you'll need to dive into the source code of both LiME and the target kernel (include/linux/module.h, include/linux/rbtree.h, etc.) to understand the struct module and other API changes and manually port lime.ko. This can be a significant undertaking.
+
+The error you're seeing is a clear signal that the kernel APIs used by lime.ko (especially struct module) are no longer compatible with the Android 15 kernel. You've correctly fixed the rb_add type mismatch, but now you're facing the next layer of API incompatibility.
